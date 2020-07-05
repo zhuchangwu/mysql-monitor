@@ -1,3 +1,0 @@
-time="2020-07-05T10:15:18+08:00" level=debug msg="File:[/log/log_test.go] line:[11] name:[tom] age:[23]"
-time="2020-07-05T10:15:18+08:00" level=info msg="File:[/log/log_test.go] line:[12] name:[tom] age:[23]"
-time="2020-07-05T10:15:18+08:00" level=error msg="File:[/log/log_test.go] line:[13] name:[tom] age:[23]"

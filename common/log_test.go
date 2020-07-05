@@ -1,4 +1,4 @@
-package log
+package common
 
 import (
 	"fmt"
@@ -14,7 +14,7 @@ func TestExample_basic(t *testing.T) {
 }
 
 func TestSpilitFilePath(t *testing.T) {
-	msg := "File:[/Users/dxm/go/src/mysql-monitor/log/log_test.go]"
+	msg := "File:[/Users/dxm/go/src/mysql-monitor/common/log_test.go]"
 	index := strings.Index(msg, "mysql-monitor")
 	index2 := strings.Index(msg, "]")
 	msg = msg[index+13:index2]

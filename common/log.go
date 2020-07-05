@@ -1,4 +1,4 @@
-package log
+package common
 
 import (
 	"github.com/sirupsen/logrus"
@@ -16,18 +16,20 @@ func init() {
 	log.Formatter.(*logrus.TextFormatter).DisableColors = true     // remove colors
 	log.Formatter.(*logrus.TextFormatter).DisableTimestamp = false // remove timestamp from test output
 	log.SetLevel(logrus.DebugLevel)
-	file, err := os.OpenFile("mysql-monitor.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0777)
+	getwd, _ := os.Getwd()
+
+	file, err := os.OpenFile(getwd+"/mysql-monitor.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0777)
 	if err == nil {
 		log.Out = file
 	} else {
-		log.Info("Failed to log to file, using default stderr")
+		log.Info("Failed to common to file, using default stderr")
 	}
 }
 
 func Debug(fmtStr string, args ...interface{}) {
 	_, file, line, ok := runtime.Caller(1)
 	if ok {
-		file:=parseFilePath(file)
+		file := parseFilePath(file)
 		pre := "File:[" + file + "] line:[" + strconv.Itoa(line) + "] "
 		log.Debugf(pre+fmtStr, args...)
 		return
@@ -38,7 +40,7 @@ func Debug(fmtStr string, args ...interface{}) {
 func Info(fmtStr string, args ...interface{}) {
 	_, file, line, ok := runtime.Caller(1)
 	if ok {
-		file:=parseFilePath(file)
+		file := parseFilePath(file)
 		pre := "File:[" + file + "] line:[" + strconv.Itoa(line) + "] "
 		log.Infof(pre+fmtStr, args...)
 		return
@@ -47,9 +49,9 @@ func Info(fmtStr string, args ...interface{}) {
 }
 
 func Error(fmtStr string, args ...interface{}) {
-	_, file, line, ok := runtime.Caller(1)
+	_, file, line, ok := runtime.Caller(3)
 	if ok {
-		file:=parseFilePath(file)
+		file := parseFilePath(file)
 		pre := "File:[" + file + "] line:[" + strconv.Itoa(line) + "] "
 		log.Errorf(pre+fmtStr, args...)
 		return
@@ -57,9 +59,18 @@ func Error(fmtStr string, args ...interface{}) {
 	log.Errorf(fmtStr, args...)
 }
 
-func parseFilePath(pathStr string)string{
-	msg := "File:[/Users/dxm/go/src/mysql-monitor/log/log_test.go]"
-	index := strings.Index(msg, "mysql-monitor")
-	index2 := strings.Index(msg, "]")
-	return msg[index+13:index2]
+func Warn(fmtStr string, args ...interface{}) {
+	_, file, line, ok := runtime.Caller(1)
+	if ok {
+		file := parseFilePath(file)
+		pre := "File:[" + file + "] line:[" + strconv.Itoa(line) + "] "
+		log.Warnf(pre+fmtStr, args...)
+		return
+	}
+	log.Warnf(fmtStr, args...)
+}
+
+func parseFilePath(pathStr string) string {
+	index := strings.Index(pathStr, "mysql-monitor")
+	return pathStr[index+13 : len(pathStr)]
 }
