@@ -2,7 +2,8 @@ package dao
 
 import (
 	"context"
-	"fmt"
+	"mysql-monitor/common"
+	"mysql-monitor/connector"
 	"mysql-monitor/global"
 	"strconv"
 	"time"
@@ -43,19 +44,16 @@ func NewCpuInfo(date time.Time, time string, itemName string, users string, one,
 /**
  * 插入一条数据
  */
-func (c *CpuInfo) InsertOneCord() (id int, err error) {
+func (c *CpuInfo) InsertOneCord() (qr *connector.QueryResults, err error) {
 	connector := global.DB
 	timeOut, _ := strconv.Atoi(connector.BaseInfo.ConnTimeOut)
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(timeOut)*time.Second)
 	sqlText := "insert into cpu (cur_date, cur_time, item_name, users, one_minute, five_minute, fifteen_minute, sys_runtime, cpu_num, load_avg) values (?,?,?,?,?,?,?,?,?,?);"
-
-	//args := make([]interface{}, 10)
-	//args = append(args, c.CurDate, c.CurTime, c.ItemName, c.Users, c.OneMinute, c.FiveMinute, c.FifteenMinute, c.SysRuntime, c.CpuNum, c.LoadAvg)
-	id, err = connector.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Users, c.OneMinute, c.FiveMinute, c.FifteenMinute, c.SysRuntime, c.CpuNum, c.LoadAvg)
-	if nil != err {
-		 cancelFunc()
-		fmt.Printf("Fail to inset cpuInfo ,sqlTest:[%v] err:[%v]", sqlText, err.Error())
+	qr = connector.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Users, c.OneMinute, c.FiveMinute, c.FifteenMinute, c.SysRuntime, c.CpuNum, c.LoadAvg)
+	if nil != qr.Err {
+		common.Error("Fail to inset cpuInfo ,sqlTest:[%v] err:[%v]", sqlText, err.Error())
+		cancelFunc()
 	}
 	// 使用global的
-	return id, err
+	return qr, err
 }
