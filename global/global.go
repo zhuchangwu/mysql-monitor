@@ -1,7 +1,7 @@
 package global
 
 import (
-	"fmt"
+	"mysql-monitor/common"
 	"mysql-monitor/connector"
 )
 
@@ -15,10 +15,10 @@ var DB *connector.Conenctor
 
 // 初始化数据库连接
 func init() {
-	fmt.Println("Ready to init DB...")
+	common.Info("Ready to init DB...")
 	DB = &connector.Conenctor{}
 	DB.Open()
-	fmt.Println("Ready to init DB Done")
+	common.Info("DB Init successful")
 }
 
 
