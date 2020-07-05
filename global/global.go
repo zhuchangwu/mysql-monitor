@@ -7,7 +7,8 @@ import (
 
 // 常量：采集项名称
 const (
-	CPUITEM = "CPUITEM"
+	ITEM_CPUITEM = "CPUITEM"
+	ITEM_MEMORTY = "MEMORTY"
 )
 
 // 常量：采集过程中 子goroutine向父goroutine汇报的错误类型

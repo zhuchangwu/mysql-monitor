@@ -31,7 +31,7 @@ func NewMonitor(itemName string) *Monitor {
 /**
  * 有则更新、无则插入 CPU 监控项
  */
-func (m *Monitor) SaveOrUpdateCpuInfo() (qs *connector.QueryResults) {
+func (m *Monitor) SaveOrUpdateMonitorInfo() (qs *connector.QueryResults) {
 	// 先查询，再修改
 	timeOut, _ := strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 	ctx, canncel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))

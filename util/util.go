@@ -4,9 +4,40 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
+
+/**
+ *
+ */
+
+func SpilitStringBySpace(str string)[]string{
+	temp := make([]string, 0)
+	if len(str)==0 {
+		return temp
+	}
+	split := strings.Split(str, " ")
+	for _, v := range split {
+		if v!="" {
+			temp = append(temp,v)
+		}
+	}
+	return temp
+}
+
+/**
+ * 返回Time中的时间部分：如：21:24:11
+ */
+func GetTimeString(time time.Time) string{
+	h := time.Hour()
+	M := time.Minute()
+	S := time.Second()
+	return  strconv.Itoa(h) + ":" +strconv.Itoa(M) + ":"+strconv.Itoa(S)
+}
+
 
 /**
  * 切分字符串：返回s串中，最后出现的sub之后的部分

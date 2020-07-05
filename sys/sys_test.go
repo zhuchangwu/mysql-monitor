@@ -4,9 +4,16 @@ import (
 	"fmt"
 	"mysql-monitor/global"
 	_ "mysql-monitor/global"
+	"strconv"
 	"testing"
 	"time"
 )
+
+func TestSysMemoryUsageRate(t *testing.T){
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysMemoryUsageRate()
+}
+
 
 func TestMonitorChildGroutine(t *testing.T) {
 	type Task struct {
@@ -46,9 +53,9 @@ func TestMonitorChildGroutine(t *testing.T) {
 	go func() {
 		for {
 			select {
-			case task:= <- tasks:
+			case task := <-tasks:
 				fmt.Println("有子goroutine退出了～")
-				fmt.Printf("%#v",*task)
+				fmt.Printf("%#v", *task)
 				fmt.Println("报警～")
 			default:
 				fmt.Println("nothingtodo～")
@@ -63,7 +70,7 @@ func TestMonitorChildGroutine(t *testing.T) {
 
 func TestMonitorCpu(t *testing.T) {
 	monitor := GenerateSingletonSystemMonitor()
-	monitor.SysCPUUsageRate()
+	monitor.SysLoadAvgUsageRate()
 }
 
 /**
@@ -71,7 +78,7 @@ func TestMonitorCpu(t *testing.T) {
  */
 func TestTypeParse(t *testing.T) {
 	monitor := GenerateSingletonSystemMonitor()
-	referce := monitor.referMap[global.CPUITEM]
+	referce := monitor.referMap[global.ITEM_CPUITEM]
 	ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 	select {
 	case <-ticker.C:
@@ -82,6 +89,8 @@ func TestTypeParse(t *testing.T) {
 }
 
 func TestTime(t *testing.T) {
-	now := time.Now()
-	fmt.Println(now)
+	now := time.Now().Hour()
+	M := time.Now().Minute()
+	S := time.Now().Second()
+	fmt.Println(strconv.Itoa(now) + ":" +strconv.Itoa(M) + ":"+strconv.Itoa(S))
 }
