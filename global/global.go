@@ -5,9 +5,16 @@ import (
 	"mysql-monitor/connector"
 )
 
-// 常量
+// 常量：采集项名称
 const (
 	CPUITEM = "CPUITEM"
+)
+
+// 常量：采集过程中 子goroutine向父goroutine汇报的错误类型
+const (
+	PANIC = "PANIC" // panic
+	INSERT_CPUINFO_ERR = "INSERT_CPUINFO_ERR" // 保存采集到的cpu信息时报错失败
+	UPDATE_CPUMONITORINFO_ERR = "UPDATE_CPUMONITORINFO_ERR"  // 更新CPU—Motior表时报错失败
 )
 
 // 数据库
