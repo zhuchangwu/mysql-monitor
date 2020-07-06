@@ -13,6 +13,15 @@ import (
 )
 
 /**
+ * IO监控，请确保安装了: yum -y install dstat
+ *
+ * 遇到如下的报错后: vim /usr/bin/dstat  将python修改成python2
+ * [root@139 ~]# dstat -r
+ *   File "/usr/bin/dstat", line 120
+ *   except getopt.error, exc:
+ */
+
+/**
  * describe: 系统监控层,对操作系统如下指标进行监控
  */
 type ItemName string
@@ -50,15 +59,86 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 		10,
 		0.00,
 	}
+
 	// 内存报警阈值，当free小于 total*Threhold时触发报警
 	m[global.ITEM_MEMORTY] = Referce{
 		10,
 		0.1,
 	}
+
+	// 磁盘使用情况
+	// 内存报警阈值，磁盘已使用的空间大于80%时触发报警
+	m[global.ITEM_STORE] = Referce{
+		10,
+		0.2,
+	}
+
 	return &SystemMonitor{
 		context:  context.Background(),
 		referMap: m,
 		errChan:  make(chan *ChildGoroutineErrInfo, 256),
+	}
+}
+/**
+ * 磁盘的随机读写量
+ */
+
+/**
+ * 流经网卡转发的流量
+ */
+
+/**
+ * df -h
+ * 磁盘使用情况：总大小、已使用、未使用
+ */
+
+/**
+ * 磁盘的存储的IO吞咽量：每秒读、每秒写
+ */
+func (s *SystemMonitor) SysStoreUsageRate() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_STORE, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_STORE]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysDiskMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			// -dsk/total-
+			// read  writ
+			// 770B   13k
+			var loadShell = "dstat -d 1 0"
+			memory, status, err := util.SyncExecShell(loadShell)
+			if status == 127 { // todo -1，表示命令找不到
+				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error())
+			}
+			// todo 假数据
+			memory = "-dsk/total-\n read  writ\n 770B   13k"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取当前采集的时间点: 09:44:36
+			time := util.GetTimeString(currentTime)
+			// 获取储存的IO读写使用情况
+			space := util.SpilitStringBySpace(strings.Split(memory, "\n")[2])
+			readRate:=space[0]
+			writRate:=space[1]
+			// 落库
+			storeIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_STORE, readRate, writRate)
+			qr, err := storeIOInfo.InsertOneCord()
+			if err != nil {
+				common.Error("Fail to insert storeIOInfo err:[%v]", err.Error())
+				// 向父goroutine汇报
+				s.handleException(global.ITEM_STORE, global.INSERT_STOREINFO_ERR)
+			}
+			if qr.LastInsertId == 0 {
+				common.Error("Fail to insert storeIOInfo LastInsertId:[%v]", qr.LastInsertId)
+				s.handleException(global.ITEM_STORE, global.INSERT_STOREINFO_ERR)
+			} else {
+				common.Info("Insert to storeIOInfo successful id:[%v] ", qr.LastInsertId)
+			}
+		}
 	}
 }
 
@@ -162,7 +242,7 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 			// 获取系统在1分钟、5分钟、15分钟内的负载值
 			var loadShell = "uptime"
 			loadAvg, status, err := util.SyncExecShell(loadShell)
-			if status == 127 || status == -1{
+			if status == 127 || status == -1 {
 				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error())
 			}
 			// todo 假数据
@@ -192,7 +272,7 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 			cpuNum, status, err := util.SyncExecShell(cpuNumShell)
 			// 假数据
 			cpuNum = "2"
-			if status == 127 ||status == -1{
+			if status == 127 || status == -1 {
 				common.Error("Fail to exec shell:[%v] err:[%v]", cpuNumShell, err.Error())
 			}
 			num, err := strconv.Atoi(cpuNum)

@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+func TestSysStoreUsageRate(t *testing.T)  {
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysStoreUsageRate()
+}
+
+
+
 func TestSysMemoryUsageRate(t *testing.T){
 	monitor := GenerateSingletonSystemMonitor()
 	monitor.SysMemoryUsageRate()
