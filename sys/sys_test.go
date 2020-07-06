@@ -14,6 +14,10 @@ func TestSysStoreUsageRate(t *testing.T)  {
 	monitor.SysStoreUsageRate()
 }
 
+func TestSysDiskRandomIORate(t *testing.T)  {
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysDiskRandomIORate()
+}
 
 
 func TestSysMemoryUsageRate(t *testing.T){

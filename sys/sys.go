@@ -2,6 +2,7 @@ package sys
 
 import (
 	"context"
+	"fmt"
 	"mysql-monitor/common"
 	"mysql-monitor/dao"
 	"mysql-monitor/global"
@@ -66,11 +67,17 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 		0.1,
 	}
 
-	// 磁盘使用情况
+	// 存储的IO使用率
 	// 内存报警阈值，磁盘已使用的空间大于80%时触发报警
 	m[global.ITEM_STORE] = Referce{
 		10,
 		0.2,
+	}
+
+	// 磁盘随机IO次数
+	m[global.ITEM_DISKRANDOMIO] = Referce{
+		10,
+		0,
 	}
 
 	return &SystemMonitor{
@@ -79,9 +86,6 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 		errChan:  make(chan *ChildGoroutineErrInfo, 256),
 	}
 }
-/**
- * 磁盘的随机读写量
- */
 
 /**
  * 流经网卡转发的流量
@@ -91,6 +95,69 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
  * df -h
  * 磁盘使用情况：总大小、已使用、未使用
  */
+
+/**
+ * 磁盘的随机读写 次数
+ */
+func (s *SystemMonitor) SysDiskRandomIORate() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_DISKRANDOMIO, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_DISKRANDOMIO]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysDiskRandomIOMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			// 取三次，求平均值
+			// --io/total-
+			// read  writ
+			// 0.01  2.15
+			// 0     0
+			// 0     0
+			var loadShell = "dstat -r 1 2"
+			memory, status, err := util.SyncExecShell(loadShell)
+			if status == 127 { // todo -1，表示命令找不到
+				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error()) // todo 这种地方应该退出，然后报警
+			}
+			// todo 假数据
+			memory = "--io/total-\n read  writ\n0.01  2.15\n   0     0\n   0     0"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取当前采集的时间点: 09:44:36
+			time := util.GetTimeString(currentTime)
+			// 获取储存的IO读写使用情况
+			space1 := util.SpilitStringBySpace(strings.Split(memory, "\n")[2])
+			space2 := util.SpilitStringBySpace(strings.Split(memory, "\n")[3])
+			space3 := util.SpilitStringBySpace(strings.Split(memory, "\n")[4])
+			f1, err := strconv.ParseFloat(space1[0], 64)
+			f2, err := strconv.ParseFloat(space2[0], 64)
+			f3, err := strconv.ParseFloat(space3[0], 64)
+			f4, err := strconv.ParseFloat(space1[1], 64)
+			f5, err := strconv.ParseFloat(space2[1], 64)
+			f6, err := strconv.ParseFloat(space3[1], 64)
+			readRate := (f1 + f2 + f3) / 3
+			sprintf1 := fmt.Sprintf("%.2f", readRate)
+			writRate := (f4 + f5 + f6) / 3
+			sprintf2 := fmt.Sprintf("%.2f", writRate)
+			// 落库,
+			randIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_DISKRANDOMIO, sprintf1, sprintf2)
+			qr, err := randIOInfo.InsertOneCord()
+			if err != nil {
+				common.Error("Fail to insert randIOInfo err:[%v]", err.Error())
+				// 向父goroutine汇报
+				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_STOREINFO_ERR)
+			}
+			if qr.LastInsertId == 0 {
+				common.Error("Fail to insert randIOInfo LastInsertId:[%v]", qr.LastInsertId)
+				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_STOREINFO_ERR)
+			} else {
+				common.Info("Insert to randIOInfo successful id:[%v] ", qr.LastInsertId)
+			}
+		}
+	}
+}
 
 /**
  * 磁盘的存储的IO吞咽量：每秒读、每秒写
@@ -122,8 +189,8 @@ func (s *SystemMonitor) SysStoreUsageRate() {
 			time := util.GetTimeString(currentTime)
 			// 获取储存的IO读写使用情况
 			space := util.SpilitStringBySpace(strings.Split(memory, "\n")[2])
-			readRate:=space[0]
-			writRate:=space[1]
+			readRate := space[0]
+			writRate := space[1]
 			// 落库
 			storeIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_STORE, readRate, writRate)
 			qr, err := storeIOInfo.InsertOneCord()
