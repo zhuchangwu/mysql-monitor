@@ -7,10 +7,11 @@ import (
 
 // 常量：采集项名称
 const (
-	ITEM_CPUITEM      = "CPUITEM"
-	ITEM_MEMORTY      = "MEMORTY"
-	ITEM_STORE        = "STORE"
-	ITEM_DISKRANDOMIO = "DISKRANDOMIO"
+	ITEM_CPUITEM       = "CPUITEM"            // CPU
+	ITEM_MEMORTY       = "MEMORTY"            // 内存
+	ITEM_STORE         = "STORE"              // 存储的IO
+	ITEM_DISKRANDOMIO  = "DISKRANDOMIO"       // 磁盘随机io数
+	ITEM_NETWORKCARDIO = "ITEM_NETWORKCARDIO" // 网卡的读写流量
 )
 
 // 常量：采集过程中 子goroutine向父goroutine汇报的错误类型
