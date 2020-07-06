@@ -1,2 +1,0 @@
-time="2020-07-05T11:01:55+08:00" level=info msg="File:[/common/log_test.go] line:[18] Ready to init DB..."
-time="2020-07-05T11:01:55+08:00" level=info msg="File:[/common/log_test.go] line:[21] DB Init successful"
