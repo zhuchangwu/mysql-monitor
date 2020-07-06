@@ -93,3 +93,8 @@ time="2020-07-06T22:46:48+08:00" level=info msg="File:[/global/global.go] line:[
 time="2020-07-06T22:46:53+08:00" level=info msg="File:[/sys/sys.go] line:[109] SysDiskRandomIOMonitor cycle:[10] s"
 time="2020-07-06T22:47:03+08:00" level=error msg="File:[o/src/testing/testing.go] line:[991] Fail to exec shell:[dstat -r 1 2] err:[exit status 127,/bin/bash: dstat: command not found\n]"
 time="2020-07-06T22:47:43+08:00" level=info msg="File:[/sys/sys.go] line:[156] Insert to randIOInfo successful id:[3] "
+time="2020-07-06T23:01:45+08:00" level=info msg="File:[/global/global.go] line:[30] Ready to init DB..."
+time="2020-07-06T23:01:45+08:00" level=info msg="File:[/global/global.go] line:[33] DB Init successful"
+time="2020-07-06T23:01:57+08:00" level=info msg="File:[/sys/sys.go] line:[113] SysDiskRandomIOMonitor cycle:[10] s"
+time="2020-07-06T23:02:07+08:00" level=error msg="File:[o/src/testing/testing.go] line:[991] Fail to exec shell:[dstat -n 1 0] err:[exit status 127,/bin/bash: dstat: command not found\n]"
+time="2020-07-06T23:02:13+08:00" level=info msg="File:[/sys/sys.go] line:[150] Insert to network card io successful id:[4] "

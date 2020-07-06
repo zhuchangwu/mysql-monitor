@@ -80,6 +80,13 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 		0,
 	}
 
+	// 流经网卡的流量
+	m[global.ITEM_NETWORKCARDIO] = Referce{
+		10,
+		0,
+	}
+
+
 	return &SystemMonitor{
 		context:  context.Background(),
 		referMap: m,
@@ -88,13 +95,63 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 }
 
 /**
- * 流经网卡转发的流量
- */
-
-/**
  * df -h
  * 磁盘使用情况：总大小、已使用、未使用
  */
+
+
+/**
+ * 流经网卡转发的流量
+ */
+func (s *SystemMonitor) SysNetworkCardIORate() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_NETWORKCARDIO, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_NETWORKCARDIO]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysDiskRandomIOMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			// 取三次，求平均值
+			// -net/total-
+			// recv  send
+			//   0     0
+			//  66B    0
+			//   0     0
+			var loadShell = "dstat -n 1 0"
+			memory, status, err := util.SyncExecShell(loadShell)
+			if status == 127 { // todo -1，表示命令找不到
+				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error()) // todo 这种地方应该退出，然后报警
+			}
+			// todo 假数据
+			memory = "-net/total-\n recv  send\n   0     0"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取当前采集的时间点: 09:44:36
+			time := util.GetTimeString(currentTime)
+			// 获取储存的IO读写使用情况
+			space := util.SpilitStringBySpace(strings.Split(memory, "\n")[2])
+			readRate := space[0]
+			writRate := space[1]
+			// 落库
+			randIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_NETWORKCARDIO, readRate, writRate)
+			qr, err := randIOInfo.InsertOneCord()
+			if err != nil {
+				common.Error("Fail to insert network card io err:[%v]", err.Error())
+				// 向父goroutine汇报
+				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_STOREINFO_ERR)
+			}
+			if qr.LastInsertId == 0 {
+				common.Error("Fail to insert network card io  LastInsertId:[%v]", qr.LastInsertId)
+				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_STOREINFO_ERR)
+			} else {
+				common.Info("Insert to network card io successful id:[%v] ", qr.LastInsertId)
+			}
+		}
+	}
+}
 
 /**
  * 磁盘的随机读写 次数
@@ -210,7 +267,7 @@ func (s *SystemMonitor) SysStoreUsageRate() {
 }
 
 /**
- * 内存使用率
+ * 内存使用率监控
  */
 func (s *SystemMonitor) SysMemoryUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
