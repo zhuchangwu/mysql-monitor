@@ -12,7 +12,7 @@ import (
 /**
  * CPU相关的信息
  */
-type CpuInfo struct {
+type CpuLoadAvgInfo struct {
 	ID            int
 	CurDate       time.Time // 格式 2020-1-1 10:20:21
 	CurTime       string    // 格式 10:20:21
@@ -26,8 +26,8 @@ type CpuInfo struct {
 	LoadAvg       float64   // 当前平均负载
 }
 
-func NewCpuInfo(date time.Time, time string, itemName string, users string, one, five, fifteen float64, sysRunTime string, cpuNum int, loadAvg float64) *CpuInfo {
-	return &CpuInfo{
+func NewCpuLoadAvgInfo(date time.Time, time string, itemName string, users string, one, five, fifteen float64, sysRunTime string, cpuNum int, loadAvg float64) *CpuLoadAvgInfo {
+	return &CpuLoadAvgInfo{
 		CurDate:       date,
 		CurTime:       time,
 		ItemName:      itemName,
@@ -44,7 +44,7 @@ func NewCpuInfo(date time.Time, time string, itemName string, users string, one,
 /**
  * 插入一条数据
  */
-func (c *CpuInfo) InsertOneCord() (qr *connector.QueryResults, err error) {
+func (c *CpuLoadAvgInfo) InsertOneCord() (qr *connector.QueryResults, err error) {
 	connector := global.DB
 	timeOut, _ := strconv.Atoi(connector.BaseInfo.ConnTimeOut)
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(timeOut)*time.Second)
