@@ -407,16 +407,6 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 	}
 }
 
-// todo
-// CPU调度运行队列长度
-// 3.2 us : 用户空间占用cpu百分比3.2
-// 0.0 sy : 内核空间占用cpu的百分百
-// 0.0 ni : 用户空间内改变过优先级的进程占用cpu的百分比
-// 96.8 id: 空闲的cpu百分比
-// 0.0 wa: 等待输入输出的进程占用cpu 的百分比
-// 0.0 hi: 硬件cpu占用百分比
-// 0.0 si: 软中断占用cpu百分比
-// 0.0 st: 虚拟机占有cpu百分比
 
 /**
  * 监控系统负载
@@ -483,7 +473,7 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 			// 大于0.6 == 繁忙
 			avgLoad = avgLoad / 10
 			// 落库
-			cpuInfo := dao.NewCpuInfo(currentTime, time, global.ITEM_CPUITEM, users, loadNum[0], loadNum[1], loadNum[2], sysRunTime, num, avgLoad)
+			cpuInfo := dao.NewCpuLoadAvgInfo(currentTime, time, global.ITEM_CPUITEM, users, loadNum[0], loadNum[1], loadNum[2], sysRunTime, num, avgLoad)
 			qr, err := cpuInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert cpuInfo err:[%v]", err.Error())
@@ -518,16 +508,25 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 }
 
 /**
+ *  todo
+ *  CPU调度运行队列长度
+ */
+
+/**
+ *  3.2 us : 用户空间占用cpu百分比3.2
+ *  0.0 sy : 内核空间占用cpu的百分百
+ *  0.0 ni : 用户空间内改变过优先级的进程占用cpu的百分比
+ *  96.8 id: 空闲的cpu百分比
+ *  0.0 wa: 等待输入输出的进程占用cpu 的百分比
+ *  0.0 hi: 硬件cpu占用百分比
+ *  0.0 si: 软中断占用cpu百分比
+ *  0.0 st: 虚拟机占有cpu百分比
+ */
+
+/**
  * 监控系统IO的利用率
  */
 func (s *SystemMonitor) SysIOUsageRate() {
-
-}
-
-/**
- * 将采集到的信息落盘
- */
-func (s *SystemMonitor) PersistenceItem() {
 
 }
 
