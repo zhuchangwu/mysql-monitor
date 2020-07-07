@@ -12,6 +12,7 @@ const (
 	ITEM_STORE         = "STORE"              // 存储的IO
 	ITEM_DISKRANDOMIO  = "DISKRANDOMIO"       // 磁盘随机io数
 	ITEM_NETWORKCARDIO = "ITEM_NETWORKCARDIO" // 网卡的读写流量
+	ITEM_DISKUSAGERATE = "ITEM_DISKUSAGERATE" // 磁盘的存储
 )
 
 // 常量：采集过程中 子goroutine向父goroutine汇报的错误类型
