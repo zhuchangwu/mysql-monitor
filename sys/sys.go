@@ -54,38 +54,43 @@ type SystemMonitor struct {
 
 // 简单工厂模式
 func GenerateSingletonSystemMonitor() *SystemMonitor {
-	// 读取DB，加载默认的采集周期和报警阈值到内存中
+	// 1、读取DB，加载默认的采集周期和报警阈值到内存中
 	m := make(map[ItemName]Referce, 24)
 	m[global.ITEM_CPUITEM] = Referce{
 		10,
 		0.00,
 	}
 
-	// 内存报警阈值，当free小于 total*Threhold时触发报警
+	// 2、内存报警阈值，当free小于 total*Threhold时触发报警
 	m[global.ITEM_MEMORTY] = Referce{
 		10,
 		0.1,
 	}
 
-	// 存储的IO使用率
+	// 3、存储的IO使用率
 	// 内存报警阈值，磁盘已使用的空间大于80%时触发报警
 	m[global.ITEM_STORE] = Referce{
 		10,
 		0.2,
 	}
 
-	// 磁盘随机IO次数
+	// 4、磁盘随机IO次数
 	m[global.ITEM_DISKRANDOMIO] = Referce{
 		10,
 		0,
 	}
 
-	// 流经网卡的流量
+	// 5、流经网卡的流量
 	m[global.ITEM_NETWORKCARDIO] = Referce{
 		10,
 		0,
 	}
 
+	// 6、磁盘使用情况监控
+	m[global.ITEM_DISKUSAGERATE] = Referce{
+		2,
+		0.8,
+	}
 
 	return &SystemMonitor{
 		context:  context.Background(),
@@ -97,8 +102,72 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 /**
  * df -h
  * 磁盘使用情况：总大小、已使用、未使用
+ * [root@139 ~]# df -h
+ * Filesystem      Size  Used Avail Use% Mounted on
+ * devtmpfs        1.9G     0  1.9G   0% /dev
+ * tmpfs           1.9G  144K  1.9G   1% /dev/shm
+ * tmpfs           1.9G  185M  1.7G  10% /run
+ * tmpfs           1.9G     0  1.9G   0% /sys/fs/cgroup
+ * /dev/vda1        40G   36G  1.6G  96% /
+ * tmpfs           379M     0  379M   0% /run/user/0
+ * overlay          40G   36G  1.6G  96% /var/lib/docker/overlay2/f3b7a056768d1a5a87844f0aad0ccd6ee0c178a486480a56fe632f2eb642f291/merged
  */
+func (s *SystemMonitor) SysDiskUsageRate() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_DISKUSAGERATE, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_DISKUSAGERATE]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysDiskUsageRateMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			// 取三次，求平均值
+			// -net/total-
+			// recv  send
+			//   0     0
+			//  66B    0
+			//   0     0
+			var loadShell = "df -h"
+			memory, status, err := util.SyncExecShell(loadShell)
+			if status == 127 { // todo -1，表示命令找不到
+				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error()) // todo 这种地方应该退出，然后报警
+			}
+			// todo 假数据
+			memory = "Filesystem      Size  Used Avail Use% Mounted on\ndevtmpfs        1.9G     0  1.9G   0% /dev\ntmpfs           1.9G  144K  1.9G   1% /dev/shm\ntmpfs           1.9G  185M  1.7G  10% /run\ntmpfs           1.9G     0  1.9G   0% /sys/fs/cgroup\n/dev/vda1        40G   36G  1.6G  96% /\ntmpfs           379M     0  379M   0% /run/user/0\noverlay          40G   36G  1.6G  96% /var/lib/docker/overlay2/f3b7a056768d1a5a87844f0aad0ccd6ee0c178a486480a56fe632f2eb642f291/merged"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取当前采集的时间点: 09:44:36
+			time := util.GetTimeString(currentTime)
+			// 获取各个分区的磁盘使用情况
 
+			diskInfos := make([]*dao.Disk, 0)
+			split := strings.Split(memory, "\n")
+			for i := 1; i < len(split); i++ {
+				item := util.SpilitStringBySpace(split[i])
+				info := dao.NewDiskInfo(currentTime, time, global.ITEM_DISKUSAGERATE, item[0], item[1], item[2], item[3], item[4], item[5])
+				diskInfos = append(diskInfos, info)
+			}
+
+			// 批量更新本次的采集项
+			for i := 0; i < len(diskInfos); i++ {
+				diskInfo := diskInfos[i]
+				qr := diskInfo.SaveOrUpdateDiskInfo()
+				if qr.Err != nil {
+					common.Warn("Fail to update diskInfo err:[%v]", qr.Err.Error())
+					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+				}
+				if qr.EffectRow == 0 {
+					common.Warn("Fail to update diskInfo EffectRow 0")
+					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+				} else {
+					common.Info("Update diskInfo itemName:[%v] ", global.ITEM_CPUITEM)
+				}
+			}
+		}
+	}
+}
 
 /**
  * 流经网卡转发的流量
@@ -339,6 +408,7 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 }
 
 // todo
+// CPU调度运行队列长度
 // 3.2 us : 用户空间占用cpu百分比3.2
 // 0.0 sy : 内核空间占用cpu的百分百
 // 0.0 ni : 用户空间内改变过优先级的进程占用cpu的百分比
@@ -347,6 +417,7 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 // 0.0 hi: 硬件cpu占用百分比
 // 0.0 si: 软中断占用cpu百分比
 // 0.0 st: 虚拟机占有cpu百分比
+
 /**
  * 监控系统负载
  */

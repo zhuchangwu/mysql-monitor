@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+func TestSysDiskUsageRate(t *testing.T){
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysDiskUsageRate()
+}
+
 func TestSysNetworkCardIORate(t *testing.T)  {
 	monitor := GenerateSingletonSystemMonitor()
 	monitor.SysNetworkCardIORate()
