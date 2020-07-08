@@ -59,6 +59,7 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 	m := make(map[ItemName]Referce, 24)
 
 	// todo 下面有些采集项没有添加报警的机制～～～
+	// todo 下面的全局错误存在问题～～～
 
 	m[global.ITEM_CPUITEM] = Referce{
 		10,
@@ -66,7 +67,7 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 	}
 
 	// 2、内存报警阈值，当free小于 total*Threhold时触发报警
-	m[global.ITEM_MEMORTY] = Referce{
+	m[global.ITEM_MEMORY] = Referce{
 		10,
 		0.1,
 	}
@@ -96,10 +97,16 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 		0.8,
 	}
 
-	// 6、CPU使用率采集时间
+	// 7、CPU使用率采集时间
 	m[global.ITEM_CPUUSAGERATE] = Referce{
 		2,
 		0.9,
+	}
+
+	// 8、系统上的Task情况
+	m[global.ITEM_TASKS] = Referce{
+		2,
+		0.0,
 	}
 
 	return &SystemMonitor{
@@ -166,13 +173,13 @@ func (s *SystemMonitor) SysDiskUsageRate() {
 				qr := diskInfo.SaveOrUpdateDiskInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update diskInfo err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_ITEM_DISKUSAGERATE_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update diskInfo EffectRow 0")
-					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_ITEM_DISKUSAGERATE_ERR)
 				} else {
-					common.Info("Update diskInfo itemName:[%v] ", global.ITEM_CPUITEM)
+					common.Info("Update diskInfo itemName:[%v] ", diskInfo.ItemName)
 				}
 			}
 		}
@@ -220,11 +227,11 @@ func (s *SystemMonitor) SysNetworkCardIORate() {
 			if err != nil {
 				common.Error("Fail to insert network card io err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_STOREINFO_ERR)
+				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_NETWORKCARDIORATE_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert network card io  LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_STOREINFO_ERR)
+				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_NETWORKCARDIORATE_ERR)
 			} else {
 				common.Info("Insert to network card io successful id:[%v] ", qr.LastInsertId)
 			}
@@ -281,15 +288,15 @@ func (s *SystemMonitor) SysDiskRandomIORate() {
 			randIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_DISKRANDOMIO, sprintf1, sprintf2)
 			qr, err := randIOInfo.InsertOneCord()
 			if err != nil {
-				common.Error("Fail to insert randIOInfo err:[%v]", err.Error())
+				common.Error("Fail to insert randomIOInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_STOREINFO_ERR)
+				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_DISKRANDOMIO_ERR)
 			}
 			if qr.LastInsertId == 0 {
-				common.Error("Fail to insert randIOInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_STOREINFO_ERR)
+				common.Error("Fail to insert randomIOInfo LastInsertId:[%v]", qr.LastInsertId)
+				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_DISKRANDOMIO_ERR)
 			} else {
-				common.Info("Insert to randIOInfo successful id:[%v] ", qr.LastInsertId)
+				common.Info("Insert to randomIOInfo successful id:[%v] ", qr.LastInsertId)
 			}
 		}
 	}
@@ -350,10 +357,10 @@ func (s *SystemMonitor) SysStoreUsageRate() {
  */
 func (s *SystemMonitor) SysMemoryUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_MEMORTY, global.PANIC)
+	defer s.handleException(global.ITEM_MEMORY, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_MEMORTY]
+		referce := s.referMap[global.ITEM_MEMORY]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysMemoryMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -384,33 +391,33 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 			free, _ := strconv.Atoi(memorys[3])
 			buff, _ := strconv.Atoi(memorys[5])
 			// 落库
-			memoryInfo := dao.NewMemory(currentTime, time, global.ITEM_MEMORTY, total, used, free, buff)
+			memoryInfo := dao.NewMemory(currentTime, time, global.ITEM_MEMORY, total, used, free, buff)
 			qr, err := memoryInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert memoryInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_MEMORTY, global.INSERT_CPUINFO_ERR)
+				s.handleException(global.ITEM_MEMORY, global.INSERT_MEMORY_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert memoryInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_MEMORTY, global.INSERT_CPUINFO_ERR)
+				s.handleException(global.ITEM_MEMORY, global.INSERT_MEMORY_ERR)
 			} else {
 				common.Info("Insert to memoryInfo successful id:[%v] ", qr.LastInsertId)
 			}
 			// 剩余可用内存小于总内存的%10，报警  referce.Threshold
 			if float64(free) < referce.Threshold*float64(total) {
 				common.Warn("Warning freeMemory:[%v] has been smaller than total * referce.Threshold:[%v]", free, referce.Threshold)
-				monitor := dao.NewMonitor(global.ITEM_MEMORTY)
+				monitor := dao.NewMonitor(global.ITEM_MEMORY)
 				qr := monitor.SaveOrUpdateMonitorInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update monitor err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_MEMORTY, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_MEMORY, global.UPDATE_MEMORYINFO_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update monitor EffectRow 0")
-					s.handleException(global.ITEM_MEMORTY, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_MEMORY, global.UPDATE_MEMORYINFO_ERR)
 				} else {
-					common.Info("Update to monitor successful itemName:[%v] ", global.ITEM_MEMORTY)
+					common.Info("Update to monitor successful itemName:[%v] ", global.ITEM_MEMORY)
 				}
 			}
 		}
@@ -517,9 +524,56 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 }
 
 /**
- *  todo
  *  CPU调度运行队列长度
+ *  本监控指标相关优秀的博客：https://www.cnblogs.com/makelu/p/11169270.html
  */
+func (s *SystemMonitor) SysTasks() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_TASKS, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_TASKS]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysTasksMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			// var loadShell = "top -n 1 | grep Tasks"
+			// memory, status, err := util.SyncExecShell(loadShell)
+			// if status == 127 { // todo -1，表示命令找不到
+			// 	common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error()) // todo 这种地方应该退出，然后报警
+			// }
+			// todo 假数据
+			memory := "Tasks:  92 total,   1 running,  90 sleeping,   1 stopped,   0 zombie"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取当前采集的时间点: 09:44:36
+			time := util.GetTimeString(currentTime)
+			// 解析task总数，正在运行的进程...
+			item := util.SpilitStringBySpace(memory)
+			total, err := strconv.Atoi(item[1])
+			running, err := strconv.Atoi(item[3])
+			sleeping, err := strconv.Atoi(item[5])
+			stoped, err := strconv.Atoi(item[7])
+			zombie, err := strconv.Atoi(item[10])
+			// 获取CPU的占用情况
+			info := dao.NewTasksInfo(currentTime, time, global.ITEM_TASKS, total, running, sleeping, stoped, zombie)
+			qr, err := info.InsertOneCord()
+			// 批量更新本次的采集项
+			if err != nil {
+				common.Error("Fail to insert tasks err:[%v]", err.Error())
+				// 向父goroutine汇报
+				s.handleException(global.ITEM_TASKS, global.INSERT_TASKS_ERR)
+			}
+			if qr.LastInsertId == 0 {
+				common.Error("Fail to insert tasks LastInsertId:[%v]", qr.LastInsertId)
+				s.handleException(global.ITEM_TASKS, global.INSERT_TASKS_ERR)
+			} else {
+				common.Info("Insert to tasks successful id:[%v] ", qr.LastInsertId)
+			}
+		}
+	}
+}
 
 /**
  *  监控：用户空间、内核空间、用户空间内改变过的优先级的进程占用CPU的百分比，以及空闲空间占用CPU的百分比
@@ -565,11 +619,11 @@ func (s *SystemMonitor) SysCPUUsageRate() {
 				qr := cpuUsageInfo.SaveOrUpdateCpuUsageInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update cpu usage rate err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUUSAGEINFO_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update cpu usage rate  EffectRow 0")
-					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUUSAGEINFO_ERR)
 				} else {
 					common.Info("Update cpu usage rate  itemName:[%v] ", global.ITEM_CPUUSAGERATE)
 				}

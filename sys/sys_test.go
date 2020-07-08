@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+func TestNewTasksInfo(t *testing.T)  {
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysTasks()
+}
+
 func TestSysCPUUsageRate(t *testing.T)  {
 	monitor := GenerateSingletonSystemMonitor()
 	monitor.SysCPUUsageRate()
