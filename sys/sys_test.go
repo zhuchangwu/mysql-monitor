@@ -9,6 +9,11 @@ import (
 	"time"
 )
 
+func TestSysCPUUsageRate(t *testing.T)  {
+	monitor := GenerateSingletonSystemMonitor()
+	monitor.SysCPUUsageRate()
+}
+
 func TestSysDiskUsageRate(t *testing.T){
 	monitor := GenerateSingletonSystemMonitor()
 	monitor.SysDiskUsageRate()

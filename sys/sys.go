@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// todo 针对每一个监控项写一些介绍
 /**
  * IO监控，请确保安装了: yum -y install dstat
  *
@@ -56,6 +57,9 @@ type SystemMonitor struct {
 func GenerateSingletonSystemMonitor() *SystemMonitor {
 	// 1、读取DB，加载默认的采集周期和报警阈值到内存中
 	m := make(map[ItemName]Referce, 24)
+
+	// todo 下面有些采集项没有添加报警的机制～～～
+
 	m[global.ITEM_CPUITEM] = Referce{
 		10,
 		0.00,
@@ -90,6 +94,12 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
 	m[global.ITEM_DISKUSAGERATE] = Referce{
 		2,
 		0.8,
+	}
+
+	// 6、CPU使用率采集时间
+	m[global.ITEM_CPUUSAGERATE] = Referce{
+		2,
+		0.9,
 	}
 
 	return &SystemMonitor{
@@ -407,7 +417,6 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 	}
 }
 
-
 /**
  * 监控系统负载
  */
@@ -513,21 +522,60 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
  */
 
 /**
- *  3.2 us : 用户空间占用cpu百分比3.2
- *  0.0 sy : 内核空间占用cpu的百分百
- *  0.0 ni : 用户空间内改变过优先级的进程占用cpu的百分比
- *  96.8 id: 空闲的cpu百分比
- *  0.0 wa: 等待输入输出的进程占用cpu 的百分比
- *  0.0 hi: 硬件cpu占用百分比
- *  0.0 si: 软中断占用cpu百分比
- *  0.0 st: 虚拟机占有cpu百分比
+ *  监控：用户空间、内核空间、用户空间内改变过的优先级的进程占用CPU的百分比，以及空闲空间占用CPU的百分比
+ *  [root@139 ~]# mpstat -P ALL
+ *  Linux 3.10.0-1062.4.1.el7.x86_64 (139.9.92.235) 	07/08/2020 	_x86_64_	(2 CPU)
+ * 					    用户空间 	用户空间内改变过优先级的进程    内核空间												   空闲空间
+ *  12:48:03 PM  CPU    %usr    	%nice   					 %sys 	 %iowait    %irq   %soft  %steal  %guest  %gnice   %idle
+ *  12:48:03 PM  all    0.21    	 0.00   					 0.07 	    0.10    0.00    0.00    0.00    0.00    0.00   99.61
+ *  12:48:03 PM    0    0.22    	 0.00   					 0.07 	    0.07    0.00    0.00    0.00    0.00    0.00   99.64
+ *  12:48:03 PM    1    0.21    	 0.00   					 0.08 	    0.13    0.00    0.00    0.00    0.00    0.00   99.58
  */
-
-/**
- * 监控系统IO的利用率
- */
-func (s *SystemMonitor) SysIOUsageRate() {
-
+func (s *SystemMonitor) SysCPUUsageRate() {
+	// 当前goroutine panic后，父任务可以收到通知
+	defer s.handleException(global.ITEM_CPUUSAGERATE, global.PANIC)
+	for {
+		// 获取采集周期和采集时间
+		referce := s.referMap[global.ITEM_CPUUSAGERATE]
+		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
+		common.Info("SysCPUUsageRateMonitor cycle:[%v] s", referce.Cycle)
+		// 定时采集
+		select {
+		case <-ticker.C:
+			var loadShell = "mpstat -P ALL"
+			memory, status, err := util.SyncExecShell(loadShell)
+			if status == 127 { // todo -1，表示命令找不到
+				common.Error("Fail to exec shell:[%v] err:[%v]", loadShell, err.Error()) // todo 这种地方应该退出，然后报警
+			}
+			// todo 假数据
+			memory = "Linux 3.10.0-1062.4.1.el7.x86_64 (139.9.92.235) \t07/08/2020 \t_x86_64_\t(2 CPU)\n\n09:18:41 PM  CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest  %gnice   %idle\n09:18:41 PM  all    0.21    0.00    0.07    0.10    0.00    0.00    0.00    0.00    0.00   99.61\n09:18:41 PM    0    0.22    0.00    0.07    0.07    0.00    0.00    0.00    0.00    0.00   99.64\n09:18:41 PM    1    0.21    0.00    0.08    0.13    0.00    0.00    0.00    0.00    0.00   99.58"
+			// 当前时间
+			currentTime := time.Now()
+			// 获取CPU的占用情况
+			cpuUsageInfos := make([]*dao.CpuUsageRateInfo, 0)
+			split := strings.Split(memory, "\n")
+			for i := 4; i < len(split); i++ {
+				item := util.SpilitStringBySpace(split[i])
+				info := dao.NewCpuUsageRateInfo(currentTime, item[0], global.ITEM_CPUUSAGERATE, item[3], item[4], item[5], item[12], item[2])
+				cpuUsageInfos = append(cpuUsageInfos, info)
+			}
+			// 批量更新本次的采集项
+			for i := 0; i < len(cpuUsageInfos); i++ {
+				cpuUsageInfo := cpuUsageInfos[i]
+				qr := cpuUsageInfo.SaveOrUpdateCpuUsageInfo()
+				if qr.Err != nil {
+					common.Warn("Fail to update cpu usage rate err:[%v]", qr.Err.Error())
+					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+				}
+				if qr.EffectRow == 0 {
+					common.Warn("Fail to update cpu usage rate  EffectRow 0")
+					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUMONITORINFO_ERR)
+				} else {
+					common.Info("Update cpu usage rate  itemName:[%v] ", global.ITEM_CPUUSAGERATE)
+				}
+			}
+		}
+	}
 }
 
 /**
