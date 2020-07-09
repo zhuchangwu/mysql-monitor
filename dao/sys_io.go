@@ -41,7 +41,7 @@ func (i *IO) InsertOneCord() (qr *connector.QueryResults, err error) {
 	connector := global.DB
 	timeOut, _ := strconv.Atoi(connector.BaseInfo.ConnTimeOut)
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(timeOut)*time.Second)
-	sqlText := "insert into io (cur_date, cur_time, item_name,read_rate,write_rate ) values (?,?,?,?,?);"
+	sqlText := "insert into sys_io (cur_date, cur_time, item_name,read_rate,write_rate ) values (?,?,?,?,?);"
 	qr = connector.Exec(ctx, sqlText, i.CurDate, i.CurTime, i.ItemName, i.ReadRate, i.WriteRate)
 	if nil != qr.Err {
 		common.Error("Fail to insert ioInfo ,sqlText:[%v] err:[%v]", sqlText, err.Error())

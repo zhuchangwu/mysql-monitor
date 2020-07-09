@@ -47,10 +47,10 @@ func (t *Tasks) InsertOneCord() (qr *connector.QueryResults, err error) {
 	connector := global.DB
 	timeOut, _ := strconv.Atoi(connector.BaseInfo.ConnTimeOut)
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(timeOut)*time.Second)
-	sqlText := "insert into tasks (cur_date, cur_time, item_name,total, running, sleeping, stoped, zombie) values (?,?,?,?,?,?,?,?);"
+	sqlText := "insert into sys_tasks (cur_date, cur_time, item_name,total, running, sleeping, stoped, zombie) values (?,?,?,?,?,?,?,?);"
 	qr = connector.Exec(ctx, sqlText, t.CurDate, t.CurTime, t.ItemName, t.Total,t.Running,t.Sleeping,t.Stoped,t.Zombie)
 	if nil != qr.Err {
-		common.Error("Fail to insert tasks ,sqlText:[%v] err:[%v]", sqlText, err.Error())
+		common.Error("Fail to insert sys_tasks ,sqlText:[%v] err:[%v]", sqlText, err.Error())
 		cancelFunc()
 	}
 	// 使用global的

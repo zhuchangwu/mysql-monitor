@@ -48,7 +48,7 @@ func (d *Disk) SaveOrUpdateDiskInfo() (qs *connector.QueryResults) {
 	// 先查询，再修改
 	timeOut, _ := strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 	ctx, canncel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
-	sqlText := "select id from disk where file_system = ? and mounted_on = ?"
+	sqlText := "select id from sys_disk where file_system = ? and mounted_on = ?"
 	qs = global.DB.Query(ctx, sqlText, d.FileSystem, d.MountedOn)
 	var id = -1
 
@@ -65,11 +65,11 @@ func (d *Disk) SaveOrUpdateDiskInfo() (qs *connector.QueryResults) {
 	ctx, canncel = context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
 	// 存在就更新
 	if id == -1 {
-		sqlText = "insert into disk (cur_date,cur_time,item_name,file_system,size,used,avail, `usage`,mounted_on) values(?,?,?,?,?,?,?,?,?)"
+		sqlText = "insert into sys_disk (cur_date,cur_time,item_name,file_system,size,used,avail, `usage`,mounted_on) values(?,?,?,?,?,?,?,?,?)"
 		qs = global.DB.Exec(ctx, sqlText, d.CurDate, d.CurTime, d.ItemName, d.FileSystem, d.Size, d.Used, d.Avail, d.Usage, d.MountedOn)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 		if nil != qs.Err {
-			common.Error("Fail to insert disk where id:[%v]", id)
+			common.Error("Fail to insert sys_disk where id:[%v]", id)
 			canncel()
 		}
 	} else {
@@ -77,11 +77,11 @@ func (d *Disk) SaveOrUpdateDiskInfo() (qs *connector.QueryResults) {
 		// 查询到之后就更新当前的记录
 		timeOut, _ = strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 		ctx, canncel = context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
-		sqlText = "update disk set cur_date=?,cur_time=?,item_name=?,file_system=?,size=?,used=?,avail=?, `usage`=?,mounted_on=? where id=?"
+		sqlText = "update sys_disk set cur_date=?,cur_time=?,item_name=?,file_system=?,size=?,used=?,avail=?, `usage`=?,mounted_on=? where id=?"
 		qs = global.DB.Exec(ctx, sqlText, d.CurDate, d.CurTime, d.ItemName, d.FileSystem, d.Size, d.Used, d.Avail, d.Usage, d.MountedOn, id)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 		if nil != qs.Err {
-			common.Error("Fail to update disk where id:[%v]", id)
+			common.Error("Fail to update sys_disk where id:[%v]", id)
 			canncel()
 		}
 	}

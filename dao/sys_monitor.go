@@ -35,7 +35,7 @@ func (m *Monitor) SaveOrUpdateMonitorInfo() (qs *connector.QueryResults) {
 	// 先查询，再修改
 	timeOut, _ := strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 	ctx, canncel := context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
-	sqlText := "select id from monitor where item_name = ?"
+	sqlText := "select id from sys_monitor where item_name = ?"
 	qs = global.DB.Query(ctx, sqlText, m.ItemName)
 	var id = -1
 
@@ -43,7 +43,7 @@ func (m *Monitor) SaveOrUpdateMonitorInfo() (qs *connector.QueryResults) {
 		err := qs.Rows.Scan(&id)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 		if nil != err || id == -1 {
-			common.Error("Fail to select monitor where item_name:[%v]", m.ItemName)
+			common.Error("Fail to select sys_monitor where item_name:[%v]", m.ItemName)
 			canncel()
 			return
 		}
@@ -53,11 +53,11 @@ func (m *Monitor) SaveOrUpdateMonitorInfo() (qs *connector.QueryResults) {
 	// 查询到之后就更新当前的记录
 	timeOut, _ = strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 	ctx, canncel = context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
-	sqlText = "update monitor set current_threshold_num=current_threshold_num+1,threshold_history_num=threshold_history_num+1 where id=?"
+	sqlText = "update sys_monitor set current_threshold_num=current_threshold_num+1,threshold_history_num=threshold_history_num+1 where id=?"
 	qs = global.DB.Exec(ctx, sqlText, id)
 	// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 	if nil != qs.Err {
-		common.Error("Fail to update monitor where id:[%v]", id)
+		common.Error("Fail to update sys_monitor where id:[%v]", id)
 		canncel()
 	}
 	return

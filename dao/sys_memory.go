@@ -43,10 +43,10 @@ func (m *Memory) InsertOneCord() (qr *connector.QueryResults, err error) {
 	connector := global.DB
 	timeOut, _ := strconv.Atoi(connector.BaseInfo.ConnTimeOut)
 	ctx, cancelFunc := context.WithTimeout(context.Background(), time.Duration(timeOut)*time.Second)
-	sqlText := "insert into memory (cur_date, cur_time, item_name, total, used, free, buff) values (?,?,?,?,?,?,?);"
+	sqlText := "insert into sys_memory (cur_date, cur_time, item_name, total, used, free, buff) values (?,?,?,?,?,?,?);"
 	qr = connector.Exec(ctx, sqlText, m.CurDate, m.CurTime, m.ItemName, m.Total, m.Used, m.Free, m.Buff)
 	if nil != qr.Err {
-		common.Error("Fail to insert memoryInfo ,sqlTest:[%v] err:[%v]", sqlText, err.Error())
+		common.Error("Fail to insert sys_memoryInfo ,sqlTest:[%v] err:[%v]", sqlText, err.Error())
 		cancelFunc()
 	}
 	return qr, err
