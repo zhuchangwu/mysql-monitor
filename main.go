@@ -1,8 +1,8 @@
 package main
 
 import (
-	"mysql-monitor/common"// step2: 初始化log
-	"mysql-monitor/global"// step1: 初始化DB、热更新配置需要的chan
+	"mysql-monitor/common" // step2: 初始化log
+	"mysql-monitor/pb"
 	"mysql-monitor/sys"
 	"os"
 	"os/signal"
@@ -35,8 +35,8 @@ func main() {
 	// 启动Grpc-Server
 	waitGroup:=new(sync.WaitGroup)
 	waitGroup.Add(1)
-	server:= global.NewRpcServer()
-	go global.StartRpcServer(server,waitGroup)
+	server:= pb.NewRpcServer()
+	go pb.StartRpcServer(server,waitGroup)
 
 	// 启动过程中出现异常后优雅的退出
 	sc := make(chan os.Signal)
@@ -56,4 +56,3 @@ func main() {
 	}
 
 }
-
