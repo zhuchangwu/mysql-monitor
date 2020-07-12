@@ -11,9 +11,8 @@ import (
 )
 
 /**
- *
+ * 根据空格切割字符串
  */
-
 func SpilitStringBySpace(str string)[]string{
 	temp := make([]string, 0)
 	if len(str)==0 {
