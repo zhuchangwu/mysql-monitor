@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 )
+
 /**
  *  目前有报警策略的监控项有：
  *  1、磁盘使用率：当挂载在/下的文件系统的磁盘使用率超过阙值时，报警。
@@ -139,6 +140,8 @@ func (s *SystemMonitor) StartSysMonitor() {
 	go s.handlePanicAndAlarm()
 	go s.LoadNewestDataFromHotChan()
 }
+
+// todo 我们规定，当从配置map中读取到了负数，说明用户不想继续采集该监控项的数据，睡眠n秒，continue
 
 /**
  * df -h
@@ -725,8 +728,16 @@ func (s *SystemMonitor) LoadNewestDataFromHotChan() {
 	for {
 		select {
 		case newestData := <-global.SysHotLoadChan:
-			cycle, _ := strconv.Atoi(newestData.Cycle)
-			threshold, _ := strconv.ParseFloat(newestData.Threshold, 64)
+			cycle, err := strconv.Atoi(newestData.Cycle)
+			if err != nil {
+				common.Warn("Fail to parse newestData.Cycle:[%v] to intd")
+				continue
+			}
+			threshold, err := strconv.ParseFloat(newestData.Threshold, 64)
+			if err != nil {
+				common.Warn("Fail to parse newestData.Threshold:[%v] to float")
+				continue
+			}
 			referce := &Referce{
 				Cycle:     cycle,
 				Threshold: threshold,
@@ -735,6 +746,7 @@ func (s *SystemMonitor) LoadNewestDataFromHotChan() {
 			// 更新采集周期、采集阙值
 			s.referMap[ItemName(newestData.ItemName)] = referce
 			s.rwLock.Unlock()
+			common.Warn("Recieve newest config cycle:[%v] threshold:[%v]", newestData.Cycle, newestData.Threshold)
 		default:
 			common.Info("nothing in  Sys Hot Chan will sleep 5 seconds")
 			time.Sleep(time.Second * 5)

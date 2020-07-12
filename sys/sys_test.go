@@ -21,7 +21,9 @@ func TestSysCPUUsageRate(t *testing.T)  {
 
 func TestSysDiskUsageRate(t *testing.T){
 	monitor := GenerateSingletonSystemMonitor()
-	monitor.SysDiskUsageRate()
+	go monitor.SysDiskUsageRate()
+
+	time.Sleep(1000*time.Second)
 }
 
 func TestSysNetworkCardIORate(t *testing.T)  {
@@ -109,7 +111,7 @@ func TestMonitorCpu(t *testing.T) {
  */
 func TestTypeParse(t *testing.T) {
 	monitor := GenerateSingletonSystemMonitor()
-	referce := monitor.referMap[global.ITEM_CPUITEM]
+	referce := monitor.referMap[global.SYS_INSERT_CPUINFO_ERR]
 	ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 	select {
 	case <-ticker.C:
