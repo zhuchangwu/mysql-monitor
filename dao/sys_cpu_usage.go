@@ -52,7 +52,7 @@ func (c *CpuUsageRateInfo) SaveOrUpdateCpuUsageInfo() (qs *connector.QueryResult
 	sqlText := "select id from sys_cpu_usage where cpu_num = ?"
 	qs = global.DB.Query(ctx, sqlText, c.CpuNum)
 	var id = -1
-
+	defer qs.Rows.Close()
 	if qs.Rows.Next() {
 		err := qs.Rows.Scan(&id)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
@@ -67,7 +67,7 @@ func (c *CpuUsageRateInfo) SaveOrUpdateCpuUsageInfo() (qs *connector.QueryResult
 	// 存在就更新
 	if id == -1 {
 		sqlText = "insert into sys_cpu_usage (cur_date,cur_time,item_name,usr, nice, sys, idle, cpu_num) values(?,?,?,?,?,?,?,?)"
-		qs = global.DB.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Usr, c.Nice,c.Sys, c.Idle, c.CpuNum)
+		qs = global.DB.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Usr, c.Nice, c.Sys, c.Idle, c.CpuNum)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 		if nil != qs.Err {
 			common.Error("Fail to insert sys_cpu_usage where id:[%v]", id)
@@ -79,7 +79,7 @@ func (c *CpuUsageRateInfo) SaveOrUpdateCpuUsageInfo() (qs *connector.QueryResult
 		timeOut, _ = strconv.Atoi(global.DB.BaseInfo.ConnTimeOut)
 		ctx, canncel = context.WithTimeout(context.Background(), time.Second*time.Duration(timeOut))
 		sqlText = "update sys_cpu_usage set cur_date=?,cur_time=?,item_name=?,usr=?, nice=?, sys=?, idle=? where id=?"
-		qs = global.DB.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Usr, c.Nice, c.Idle, id)
+		qs = global.DB.Exec(ctx, sqlText, c.CurDate, c.CurTime, c.ItemName, c.Usr, c.Nice,  c.Sys, c.Idle, id)
 		// 如果查询不到的化会报什么错误，默认我们认为他是查询到的
 		if nil != qs.Err {
 			common.Error("Fail to update sys_cpu_usage where id:[%v]", id)
@@ -88,4 +88,3 @@ func (c *CpuUsageRateInfo) SaveOrUpdateCpuUsageInfo() (qs *connector.QueryResult
 	}
 	return
 }
-
