@@ -12,6 +12,12 @@ import (
 	"sync"
 	"time"
 )
+/**
+ *  目前有报警策略的监控项有：
+ *  1、磁盘使用率：当挂载在/下的文件系统的磁盘使用率超过阙值时，报警。
+ *  2、内存使用率：当内存剩余不到总内存的 x 阙值时，报警。
+ *  3、cpu：当cpu的load-avg大于指定的阙值时，报警。
+ */
 
 // todo 针对每一个监控项写一些介绍
 /**
@@ -47,7 +53,7 @@ type SystemMonitor struct {
 	rwLock sync.RWMutex
 
 	// 存放监控项采集周期以及报警参考值的map
-	referMap map[ItemName]Referce
+	referMap map[ItemName]*Referce
 
 	// 收集:子goroutine中的错误信息
 	errChan chan *ChildGoroutineErrInfo
@@ -55,65 +61,83 @@ type SystemMonitor struct {
 
 // 简单工厂模式
 func GenerateSingletonSystemMonitor() *SystemMonitor {
+	// todo 模拟从数据库中将初始化的信息读取出来
+	m := LoadSysMonitorItemCycleAndThresholdFromDB()
+	return &SystemMonitor{
+		context:  context.Background(),
+		referMap: m,
+		errChan:  make(chan *ChildGoroutineErrInfo, 256),
+	}
+}
+
+// 从数据库中加载初始性的信息
+func LoadSysMonitorItemCycleAndThresholdFromDB() map[ItemName]*Referce {
 	// 1、读取DB，加载默认的采集周期和报警阈值到内存中
-	m := make(map[ItemName]Referce, 24)
+	m := make(map[ItemName]*Referce, 24)
 
-	// todo 下面有些采集项没有添加报警的机制～～～
-	// todo 下面的全局错误存在问题～～～
-
-	m[global.ITEM_CPUITEM] = Referce{
+	// todo 这些数据从mysql-monitor表中读取加载
+	m[global.SYS_ITEM_CPU] = &Referce{
 		10,
 		0.00,
 	}
 
 	// 2、内存报警阈值，当free小于 total*Threhold时触发报警
-	m[global.ITEM_MEMORY] = Referce{
+	m[global.SYS_ITEM_MEMORY] = &Referce{
 		10,
 		0.1,
 	}
 
 	// 3、存储的IO使用率
 	// 内存报警阈值，磁盘已使用的空间大于80%时触发报警
-	m[global.ITEM_STORE] = Referce{
+	m[global.SYS_ITEM_STORE] = &Referce{
 		10,
 		0.2,
 	}
 
 	// 4、磁盘随机IO次数
-	m[global.ITEM_DISKRANDOMIO] = Referce{
+	m[global.SYS_ITEM_DISKRANDOMIO] = &Referce{
 		10,
 		0,
 	}
 
 	// 5、流经网卡的流量
-	m[global.ITEM_NETWORKCARDIO] = Referce{
+	m[global.SYS_ITEM_NETWORKCARDIO] = &Referce{
 		10,
 		0,
 	}
 
 	// 6、磁盘使用情况监控
-	m[global.ITEM_DISKUSAGERATE] = Referce{
+	m[global.SYS_ITEM_DISKUSAGERATE] = &Referce{
 		2,
 		0.8,
 	}
 
 	// 7、CPU使用率采集时间
-	m[global.ITEM_CPUUSAGERATE] = Referce{
+	m[global.SYS_ITEM_CPUUSAGERATE] = &Referce{
 		2,
 		0.9,
 	}
 
 	// 8、系统上的Task情况
-	m[global.ITEM_TASKS] = Referce{
+	m[global.SYS_ITEM_TASKS] = &Referce{
 		2,
 		0.0,
 	}
+	return m
+}
 
-	return &SystemMonitor{
-		context:  context.Background(),
-		referMap: m,
-		errChan:  make(chan *ChildGoroutineErrInfo, 256),
-	}
+// 启动
+func (s *SystemMonitor) StartSysMonitor() {
+	go s.SysTasks()
+	go s.SysDiskUsageRate()
+	go s.SysNetworkCardIORate()
+	go s.SysDiskRandomIORate()
+	go s.SysStoreUsageRate()
+	go s.SysMemoryUsageRate()
+	go s.SysLoadAvgUsageRate()
+	go s.SysCPUUsageRate()
+	go s.handlePanicAndAlarm()
+	go s.LoadNewestDataFromHotChan()
 }
 
 /**
@@ -128,13 +152,15 @@ func GenerateSingletonSystemMonitor() *SystemMonitor {
  * /dev/vda1        40G   36G  1.6G  96% /
  * tmpfs           379M     0  379M   0% /run/user/0
  * overlay          40G   36G  1.6G  96% /var/lib/docker/overlay2/f3b7a056768d1a5a87844f0aad0ccd6ee0c178a486480a56fe632f2eb642f291/merged
+ *
+ * 报警：当挂载在/下的文件系统的磁盘使用率超过阙值时，报警
  */
 func (s *SystemMonitor) SysDiskUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_DISKUSAGERATE, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_DISKUSAGERATE, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_DISKUSAGERATE]
+		referce := s.referMap[global.SYS_ITEM_DISKUSAGERATE]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysDiskUsageRateMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -163,7 +189,7 @@ func (s *SystemMonitor) SysDiskUsageRate() {
 			split := strings.Split(memory, "\n")
 			for i := 1; i < len(split); i++ {
 				item := util.SpilitStringBySpace(split[i])
-				info := dao.NewDiskInfo(currentTime, time, global.ITEM_DISKUSAGERATE, item[0], item[1], item[2], item[3], item[4], item[5])
+				info := dao.NewDiskInfo(currentTime, time, global.SYS_ITEM_DISKUSAGERATE, item[0], item[1], item[2], item[3], item[4], item[5])
 				diskInfos = append(diskInfos, info)
 			}
 
@@ -173,13 +199,35 @@ func (s *SystemMonitor) SysDiskUsageRate() {
 				qr := diskInfo.SaveOrUpdateDiskInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update diskInfo err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_ITEM_DISKUSAGERATE_ERR)
+					s.handleException(global.SYS_ITEM_DISKUSAGERATE, global.SYS_UPDATE_ITEM_DISKUSAGERATE_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update diskInfo EffectRow 0")
-					s.handleException(global.ITEM_DISKUSAGERATE, global.UPDATE_ITEM_DISKUSAGERATE_ERR)
+					s.handleException(global.SYS_ITEM_DISKUSAGERATE, global.SYS_UPDATE_ITEM_DISKUSAGERATE_ERR)
 				} else {
 					common.Info("Update diskInfo itemName:[%v] ", diskInfo.ItemName)
+				}
+				// 报警；当挂在在/下的磁盘使用率大于阙值时，报警
+				usage, err := strconv.ParseFloat(strings.Split(diskInfo.Usage, "%")[0], 64)
+				if err != nil {
+					common.Warn("fotmat [%v]  to int", strings.Split(diskInfo.Usage, "%")[0])
+					return
+				}
+				if diskInfo.MountedOn == "/" && usage > referce.Threshold*100 {
+
+					common.Warn("Warning file_system:[%v] has been greater than referce.Threshold:[%v]", diskInfo.FileSystem, referce.Threshold)
+					monitor := dao.NewMonitor(global.SYS_ITEM_DISKUSAGERATE)
+					qr := monitor.SaveOrUpdateMonitorInfo()
+					if qr.Err != nil {
+						common.Warn("Fail to update monitor err:[%v]", qr.Err.Error())
+						s.handleException(global.SYS_ITEM_DISKUSAGERATE, global.SYS_UPDATE_DISKUSAGEMONITORINFO_ERR)
+					}
+					if qr.EffectRow == 0 {
+						common.Warn("Fail to update monitor EffectRow 0")
+						s.handleException(global.SYS_ITEM_DISKUSAGERATE, global.SYS_UPDATE_DISKUSAGEMONITORINFO_ERR)
+					} else {
+						common.Info("Update to monitor successful itemName:[%v] ", global.SYS_ITEM_DISKUSAGERATE)
+					}
 				}
 			}
 		}
@@ -191,10 +239,10 @@ func (s *SystemMonitor) SysDiskUsageRate() {
  */
 func (s *SystemMonitor) SysNetworkCardIORate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_NETWORKCARDIO, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_NETWORKCARDIO, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_NETWORKCARDIO]
+		referce := s.referMap[global.SYS_ITEM_NETWORKCARDIO]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysDiskRandomIOMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -222,16 +270,16 @@ func (s *SystemMonitor) SysNetworkCardIORate() {
 			readRate := space[0]
 			writRate := space[1]
 			// 落库
-			randIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_NETWORKCARDIO, readRate, writRate)
+			randIOInfo := dao.NewIOInfo(currentTime, time, global.SYS_ITEM_NETWORKCARDIO, readRate, writRate)
 			qr, err := randIOInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert network card io err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_NETWORKCARDIORATE_ERR)
+				s.handleException(global.SYS_ITEM_NETWORKCARDIO, global.SYS_INSERT_NETWORKCARDIORATE_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert network card io  LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_NETWORKCARDIO, global.INSERT_NETWORKCARDIORATE_ERR)
+				s.handleException(global.SYS_ITEM_NETWORKCARDIO, global.SYS_INSERT_NETWORKCARDIORATE_ERR)
 			} else {
 				common.Info("Insert to network card io successful id:[%v] ", qr.LastInsertId)
 			}
@@ -244,10 +292,10 @@ func (s *SystemMonitor) SysNetworkCardIORate() {
  */
 func (s *SystemMonitor) SysDiskRandomIORate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_DISKRANDOMIO, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_DISKRANDOMIO, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_DISKRANDOMIO]
+		referce := s.referMap[global.SYS_ITEM_DISKRANDOMIO]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysDiskRandomIOMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -285,16 +333,16 @@ func (s *SystemMonitor) SysDiskRandomIORate() {
 			writRate := (f4 + f5 + f6) / 3
 			sprintf2 := fmt.Sprintf("%.2f", writRate)
 			// 落库,
-			randIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_DISKRANDOMIO, sprintf1, sprintf2)
+			randIOInfo := dao.NewIOInfo(currentTime, time, global.SYS_ITEM_DISKRANDOMIO, sprintf1, sprintf2)
 			qr, err := randIOInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert randomIOInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_DISKRANDOMIO_ERR)
+				s.handleException(global.SYS_ITEM_DISKRANDOMIO, global.SYS_INSERT_DISKRANDOMIO_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert randomIOInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_DISKRANDOMIO, global.INSERT_DISKRANDOMIO_ERR)
+				s.handleException(global.SYS_ITEM_DISKRANDOMIO, global.SYS_INSERT_DISKRANDOMIO_ERR)
 			} else {
 				common.Info("Insert to randomIOInfo successful id:[%v] ", qr.LastInsertId)
 			}
@@ -307,10 +355,10 @@ func (s *SystemMonitor) SysDiskRandomIORate() {
  */
 func (s *SystemMonitor) SysStoreUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_STORE, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_STORE, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_STORE]
+		referce := s.referMap[global.SYS_ITEM_STORE]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysDiskMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -335,16 +383,16 @@ func (s *SystemMonitor) SysStoreUsageRate() {
 			readRate := space[0]
 			writRate := space[1]
 			// 落库
-			storeIOInfo := dao.NewIOInfo(currentTime, time, global.ITEM_STORE, readRate, writRate)
+			storeIOInfo := dao.NewIOInfo(currentTime, time, global.SYS_ITEM_STORE, readRate, writRate)
 			qr, err := storeIOInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert storeIOInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_STORE, global.INSERT_STOREINFO_ERR)
+				s.handleException(global.SYS_ITEM_STORE, global.SYS_INSERT_STOREINFO_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert storeIOInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_STORE, global.INSERT_STOREINFO_ERR)
+				s.handleException(global.SYS_ITEM_STORE, global.SYS_INSERT_STOREINFO_ERR)
 			} else {
 				common.Info("Insert to storeIOInfo successful id:[%v] ", qr.LastInsertId)
 			}
@@ -357,10 +405,10 @@ func (s *SystemMonitor) SysStoreUsageRate() {
  */
 func (s *SystemMonitor) SysMemoryUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_MEMORY, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_MEMORY, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_MEMORY]
+		referce := s.referMap[global.SYS_ITEM_MEMORY]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysMemoryMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -391,33 +439,33 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
 			free, _ := strconv.Atoi(memorys[3])
 			buff, _ := strconv.Atoi(memorys[5])
 			// 落库
-			memoryInfo := dao.NewMemory(currentTime, time, global.ITEM_MEMORY, total, used, free, buff)
+			memoryInfo := dao.NewMemory(currentTime, time, global.SYS_ITEM_MEMORY, total, used, free, buff)
 			qr, err := memoryInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert memoryInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_MEMORY, global.INSERT_MEMORY_ERR)
+				s.handleException(global.SYS_ITEM_MEMORY, global.SYS_INSERT_MEMORY_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert memoryInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_MEMORY, global.INSERT_MEMORY_ERR)
+				s.handleException(global.SYS_ITEM_MEMORY, global.SYS_INSERT_MEMORY_ERR)
 			} else {
 				common.Info("Insert to memoryInfo successful id:[%v] ", qr.LastInsertId)
 			}
 			// 剩余可用内存小于总内存的%10，报警  referce.Threshold
 			if float64(free) < referce.Threshold*float64(total) {
 				common.Warn("Warning freeMemory:[%v] has been smaller than total * referce.Threshold:[%v]", free, referce.Threshold)
-				monitor := dao.NewMonitor(global.ITEM_MEMORY)
+				monitor := dao.NewMonitor(global.SYS_ITEM_MEMORY)
 				qr := monitor.SaveOrUpdateMonitorInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update monitor err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_MEMORY, global.UPDATE_MEMORYINFO_ERR)
+					s.handleException(global.SYS_ITEM_MEMORY, global.SYS_UPDATE_MEMORYINFO_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update monitor EffectRow 0")
-					s.handleException(global.ITEM_MEMORY, global.UPDATE_MEMORYINFO_ERR)
+					s.handleException(global.SYS_ITEM_MEMORY, global.SYS_UPDATE_MEMORYINFO_ERR)
 				} else {
-					common.Info("Update to monitor successful itemName:[%v] ", global.ITEM_MEMORY)
+					common.Info("Update to monitor successful itemName:[%v] ", global.SYS_ITEM_MEMORY)
 				}
 			}
 		}
@@ -429,10 +477,10 @@ func (s *SystemMonitor) SysMemoryUsageRate() {
  */
 func (s *SystemMonitor) SysLoadAvgUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_CPUITEM, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_CPU, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_CPUITEM]
+		referce := s.referMap[global.SYS_ITEM_CPU]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysLoadAvgUsageRateMonitor cycle:[%v]", referce.Cycle)
 		// 定时采集
@@ -489,16 +537,16 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 			// 大于0.6 == 繁忙
 			avgLoad = avgLoad / 10
 			// 落库
-			cpuInfo := dao.NewCpuLoadAvgInfo(currentTime, time, global.ITEM_CPUITEM, users, loadNum[0], loadNum[1], loadNum[2], sysRunTime, num, avgLoad)
+			cpuInfo := dao.NewCpuLoadAvgInfo(currentTime, time, global.SYS_ITEM_CPU, users, loadNum[0], loadNum[1], loadNum[2], sysRunTime, num, avgLoad)
 			qr, err := cpuInfo.InsertOneCord()
 			if err != nil {
 				common.Error("Fail to insert cpuInfo err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_CPUITEM, global.INSERT_CPUINFO_ERR)
+				s.handleException(global.SYS_ITEM_CPU, global.SYS_INSERT_CPUINFO_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert cpuInfo LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_CPUITEM, global.INSERT_CPUINFO_ERR)
+				s.handleException(global.SYS_ITEM_CPU, global.SYS_INSERT_CPUINFO_ERR)
 			} else {
 				common.Info("Insert to cpuInfo successful id:[%v] ", qr.LastInsertId)
 			}
@@ -506,17 +554,17 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
 			// 如果平均负载大于等于报警项，落库,计数+1
 			if avgLoad >= referce.Threshold {
 				common.Warn("Warning avgLoad:[%v] has been greater than referce.Threshold:[%v]", avgLoad, referce.Threshold)
-				monitor := dao.NewMonitor(global.ITEM_CPUITEM)
+				monitor := dao.NewMonitor(global.SYS_ITEM_CPU)
 				qr := monitor.SaveOrUpdateMonitorInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update monitor err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_CPUITEM, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.SYS_ITEM_CPU, global.SYS_UPDATE_CPUMONITORINFO_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update monitor EffectRow 0")
-					s.handleException(global.ITEM_CPUITEM, global.UPDATE_CPUMONITORINFO_ERR)
+					s.handleException(global.SYS_ITEM_CPU, global.SYS_UPDATE_CPUMONITORINFO_ERR)
 				} else {
-					common.Info("Update to monitor successful itemName:[%v] ", global.ITEM_CPUITEM)
+					common.Info("Update to monitor successful itemName:[%v] ", global.SYS_ITEM_CPU)
 				}
 			}
 		}
@@ -529,10 +577,10 @@ func (s *SystemMonitor) SysLoadAvgUsageRate() {
  */
 func (s *SystemMonitor) SysTasks() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_TASKS, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_TASKS, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_TASKS]
+		referce := s.referMap[global.SYS_ITEM_TASKS]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysTasksMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -557,17 +605,17 @@ func (s *SystemMonitor) SysTasks() {
 			stoped, err := strconv.Atoi(item[7])
 			zombie, err := strconv.Atoi(item[10])
 			// 获取CPU的占用情况
-			info := dao.NewTasksInfo(currentTime, time, global.ITEM_TASKS, total, running, sleeping, stoped, zombie)
+			info := dao.NewTasksInfo(currentTime, time, global.SYS_ITEM_TASKS, total, running, sleeping, stoped, zombie)
 			qr, err := info.InsertOneCord()
 			// 批量更新本次的采集项
 			if err != nil {
 				common.Error("Fail to insert tasks err:[%v]", err.Error())
 				// 向父goroutine汇报
-				s.handleException(global.ITEM_TASKS, global.INSERT_TASKS_ERR)
+				s.handleException(global.SYS_ITEM_TASKS, global.SYS_INSERT_TASKS_ERR)
 			}
 			if qr.LastInsertId == 0 {
 				common.Error("Fail to insert tasks LastInsertId:[%v]", qr.LastInsertId)
-				s.handleException(global.ITEM_TASKS, global.INSERT_TASKS_ERR)
+				s.handleException(global.SYS_ITEM_TASKS, global.SYS_INSERT_TASKS_ERR)
 			} else {
 				common.Info("Insert to tasks successful id:[%v] ", qr.LastInsertId)
 			}
@@ -587,10 +635,10 @@ func (s *SystemMonitor) SysTasks() {
  */
 func (s *SystemMonitor) SysCPUUsageRate() {
 	// 当前goroutine panic后，父任务可以收到通知
-	defer s.handleException(global.ITEM_CPUUSAGERATE, global.PANIC)
+	defer s.handleException(global.SYS_ITEM_CPUUSAGERATE, global.PANIC)
 	for {
 		// 获取采集周期和采集时间
-		referce := s.referMap[global.ITEM_CPUUSAGERATE]
+		referce := s.referMap[global.SYS_ITEM_CPUUSAGERATE]
 		ticker := time.NewTicker(time.Second * time.Duration(referce.Cycle))
 		common.Info("SysCPUUsageRateMonitor cycle:[%v] s", referce.Cycle)
 		// 定时采集
@@ -610,7 +658,7 @@ func (s *SystemMonitor) SysCPUUsageRate() {
 			split := strings.Split(memory, "\n")
 			for i := 4; i < len(split); i++ {
 				item := util.SpilitStringBySpace(split[i])
-				info := dao.NewCpuUsageRateInfo(currentTime, item[0], global.ITEM_CPUUSAGERATE, item[3], item[4], item[5], item[12], item[2])
+				info := dao.NewCpuUsageRateInfo(currentTime, item[0], global.SYS_ITEM_CPUUSAGERATE, item[3], item[4], item[5], item[12], item[2])
 				cpuUsageInfos = append(cpuUsageInfos, info)
 			}
 			// 批量更新本次的采集项
@@ -619,13 +667,13 @@ func (s *SystemMonitor) SysCPUUsageRate() {
 				qr := cpuUsageInfo.SaveOrUpdateCpuUsageInfo()
 				if qr.Err != nil {
 					common.Warn("Fail to update cpu usage rate err:[%v]", qr.Err.Error())
-					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUUSAGEINFO_ERR)
+					s.handleException(global.SYS_ITEM_CPUUSAGERATE, global.SYS_UPDATE_CPUUSAGEINFO_ERR)
 				}
 				if qr.EffectRow == 0 {
 					common.Warn("Fail to update cpu usage rate  EffectRow 0")
-					s.handleException(global.ITEM_CPUUSAGERATE, global.UPDATE_CPUUSAGEINFO_ERR)
+					s.handleException(global.SYS_ITEM_CPUUSAGERATE, global.SYS_UPDATE_CPUUSAGEINFO_ERR)
 				} else {
-					common.Info("Update cpu usage rate  itemName:[%v] ", global.ITEM_CPUUSAGERATE)
+					common.Info("Update cpu usage rate  itemName:[%v] ", global.SYS_ITEM_CPUUSAGERATE)
 				}
 			}
 		}
@@ -647,7 +695,7 @@ func (s *SystemMonitor) handleException(itemName string, errorType string) {
 }
 
 /**
- * 将
+ * 将报警消息写入chan
  */
 func (s *SystemMonitor) handlePanicAndAlarm() {
 	for {
@@ -658,16 +706,38 @@ func (s *SystemMonitor) handlePanicAndAlarm() {
 				common.Warn("recieve child goroutine panic msg：panicInfo:[%v]", panicInfo)
 				common.Warn("restart goroutine")
 
-			case global.INSERT_CPUINFO_ERR:
+			case global.SYS_INSERT_CPUINFO_ERR:
 				// todo
 
-			case global.UPDATE_CPUMONITORINFO_ERR:
+			case global.SYS_UPDATE_CPUMONITORINFO_ERR:
 				// todo
 
 			}
 		default:
 			common.Info("nothing todo will sleep 2 second")
 			time.Sleep(time.Second * 2)
+		}
+	}
+}
+
+// 监控热加载chan
+func (s *SystemMonitor) LoadNewestDataFromHotChan() {
+	for {
+		select {
+		case newestData := <-global.SysHotLoadChan:
+			cycle, _ := strconv.Atoi(newestData.Cycle)
+			threshold, _ := strconv.ParseFloat(newestData.Threshold, 64)
+			referce := &Referce{
+				Cycle:     cycle,
+				Threshold: threshold,
+			}
+			s.rwLock.Lock()
+			// 更新采集周期、采集阙值
+			s.referMap[ItemName(newestData.ItemName)] = referce
+			s.rwLock.Unlock()
+		default:
+			common.Info("nothing in  Sys Hot Chan will sleep 5 seconds")
+			time.Sleep(time.Second * 5)
 		}
 	}
 }
